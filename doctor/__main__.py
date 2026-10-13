@@ -8,7 +8,7 @@ import json
 import sys
 from pathlib import Path
 from .core import diagnose,markdown,READ_ONLY_TOOLS,unwrap,money_cents
-from .multi import extract_stores,extract_menu,shared_skus,compare,markdown as multi_markdown
+from .multi import extract_stores,extract_menu,shared_skus,compare,markdown as multi_markdown,explanations as multi_explanations
 from .basket import build_basket_table,markdown as basket_markdown
 from datetime import datetime, timezone
 
@@ -75,11 +75,21 @@ def live_multi(stores,requested_skus=None,sample_count=5):
         raise ValueError('请提供2–5家门店，建议先用3家。')
     data={'mode':'live-unverified','recorded_at_utc':datetime.now(timezone.utc).isoformat(),
           'business_channel':{'beType':1,'orderType':1},'tools':get_tool_definitions(),'stores':[],'sample_count':sample_count}
+    # Official clock as the experiment's time base: never trust the local machine.
+    try:
+        data['official_time']=unwrap(invoke('now-time-info',{})).get('data')
+    except Exception:
+        data['official_time']=None
     for store in stores:
         code=str(store['storeCode'])
         menu=invoke('query-meals',{'storeCode':code,'orderType':1,'beType':1})
-        data['stores'].append({'storeCode':code,'storeName':store.get('storeName',code),
-                               'menu':menu,'prices':{},'calls':['query-meals']})
+        entry={'storeCode':code,'storeName':store.get('storeName',code),
+               'menu':menu,'prices':{},'details':{},'calls':['query-meals']}
+        for key in ('businessStartTime','businessEndTime','businessStatus','distance','address'):
+            if store.get(key) is not None:
+                entry[key]=store[key]
+        data['stores'].append(entry)
+    # Nutrition is fetched once, not per store: first verify it is a single shared source.
     nutrition=invoke('list-nutrition-foods',{})
     data['nutrition']=nutrition
     menus={str(s['storeCode']):extract_menu(s['menu']) for s in data['stores']}
@@ -91,6 +101,14 @@ def live_multi(stores,requested_skus=None,sample_count=5):
                 'storeCode':s['storeCode'],'orderType':1,'beType':1,
                 'items':[{'productCode':code,'quantity':1}]})
             s['calls'].append('calculate-price')
+        # Combo composition (MCD-103): same code, does every store return the
+        # same structure? Read-only, and never interpreted as a fault on its own.
+        for code in selected:
+            try:
+                s['details'][code]=invoke('query-meal-detail',{'storeCode':s['storeCode'],'productCode':code})
+                s['calls'].append('query-meal-detail')
+            except Exception:
+                s['details'][code]=None
     return data
 
 
@@ -144,7 +162,10 @@ def main():
             wanted=[c.strip() for c in (args.basket or '').split(',') if c.strip()] or None
             report['basket']=build_basket_table(report,wanted)
             if report['basket']:
+                text+='\n## 三、观察补充：指定购物篮的门店差异\n\n'
+                text+='> 这是一项**观察**，不是诊断。价差属于正常定价，不判故障。\n'
                 text+=basket_markdown(report['basket'])
+            text+=multi_explanations()
         out=Path(args.output);out.parent.mkdir(parents=True,exist_ok=True)
         out.write_text(text,encoding='utf-8')
         out.with_suffix('.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')

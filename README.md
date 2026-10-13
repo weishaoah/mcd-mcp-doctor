@@ -1,11 +1,24 @@
-# McD MCP Doctor — read-only consistency diagnostics
+# McD MCP Doctor — multi-store business-data consistency diagnostics
 
 > Independent, unofficial developer tool. **Live-verified 2026-10-13** against the official MCP endpoint
 > (3 Shanghai stores, 21 read-only calls). Prototype scope: this is a developer diagnostic, not a security audit.
 
-A read-only diagnostic agent for McDonald's China MCP integrations. Checks business-data consistency rather than merely testing whether a JSON-RPC connection works.
+A read-only diagnostic tool for McDonald's China MCP integrations. It checks whether the data a store returns
+is **internally consistent** — not whether a JSON-RPC connection works, and **not** which store is cheaper.
 
-**The core claim: a successful JSON-RPC call is not the same as business success, and business success is not the same as parseable data.** All three layers have to be checked separately — and two of the three findings below were discovered because the checks were actually run.
+## The distinction this tool is built on
+
+| | Phenomenon | Verdict |
+|---|---|---|
+| **A. Differences between stores** | Store A sells at ¥25, store B at ¥27 | Normal pricing / ranging. **INFO only — never a fault.** |
+| **B. Inconsistency within one store** | The menu lists a product with a valid price, but passing its code to the pricing tool yields an unexplained ¥0 quote or an empty product list | Broken data path. **WARN / FAIL — this is what the tool diagnoses.** |
+
+A price-comparison tool blurs these together. This one keeps them apart: **A is recorded as an observation,
+B is the diagnosis.** The report is structured accordingly (§1 diagnosis, §2 observation).
+
+**The core claim: a successful JSON-RPC call is not the same as business success, and business success is not
+the same as parseable data.** All three layers have to be checked separately — and two of the three findings
+below were discovered because the checks were actually run.
 
 ## What live verification found (2026-10-13)
 
