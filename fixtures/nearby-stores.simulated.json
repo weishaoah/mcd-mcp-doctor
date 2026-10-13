@@ -1,0 +1,192 @@
+{
+  "mode": "fixture-simulated (NOT REAL STORES OR PRICES)",
+  "recorded_at_utc": "2026-10-12T00:00:00+00:00",
+  "business_channel": {
+    "beType": 1,
+    "orderType": 1
+  },
+  "sample_count": 2,
+  "requested_skus": [
+    "DEMO-001",
+    "DEMO-002"
+  ],
+  "stores": [
+    {
+      "storeCode": "DEMO-STORE-1",
+      "storeName": "模拟门店 A（非真实门店）",
+      "menu": {
+        "success": true,
+        "code": 200,
+        "data": {
+          "meals": {
+            "DEMO-001": {
+              "name": "示例汉堡",
+              "currentPrice": "25.50"
+            },
+            "DEMO-002": {
+              "name": "示例可乐",
+              "currentPrice": "9.00"
+            },
+            "DEMO-003": {
+              "name": "示例薯条",
+              "currentPrice": "12.00"
+            }
+          }
+        }
+      },
+      "prices": {
+        "DEMO-001": {
+          "success": true,
+          "code": 200,
+          "data": {
+            "price": 2550,
+            "productList": [
+              {
+                "productCode": "DEMO-001"
+              }
+            ]
+          }
+        },
+        "DEMO-002": {
+          "success": true,
+          "code": 200,
+          "data": {
+            "price": 900,
+            "productList": [
+              {
+                "productCode": "DEMO-002"
+              }
+            ]
+          }
+        }
+      },
+      "calls": [
+        "query-meals",
+        "calculate-price",
+        "calculate-price"
+      ]
+    },
+    {
+      "storeCode": "DEMO-STORE-2",
+      "storeName": "模拟门店 B（非真实门店）",
+      "menu": {
+        "success": true,
+        "code": 200,
+        "data": {
+          "meals": {
+            "DEMO-001": {
+              "name": "示例汉堡",
+              "currentPrice": "26.00"
+            },
+            "DEMO-002": {
+              "name": "示例可乐",
+              "currentPrice": "9.00"
+            },
+            "DEMO-004": {
+              "name": "示例玉米杯",
+              "currentPrice": "10.50"
+            }
+          }
+        }
+      },
+      "prices": {
+        "DEMO-001": {
+          "success": true,
+          "code": 200,
+          "data": {
+            "price": 2600,
+            "productList": [
+              {
+                "productCode": "DEMO-001"
+              }
+            ]
+          }
+        },
+        "DEMO-002": {
+          "success": true,
+          "code": 200,
+          "data": {
+            "price": 900,
+            "productList": [
+              {
+                "productCode": "DEMO-002"
+              }
+            ]
+          }
+        }
+      },
+      "calls": [
+        "query-meals",
+        "calculate-price",
+        "calculate-price"
+      ]
+    },
+    {
+      "storeCode": "DEMO-STORE-3",
+      "storeName": "模拟门店 C（非真实门店）",
+      "menu": {
+        "success": true,
+        "code": 200,
+        "data": {
+          "meals": {
+            "DEMO-001": {
+              "name": "示例汉堡",
+              "currentPrice": "25.50"
+            },
+            "DEMO-002": {
+              "name": "示例可乐",
+              "currentPrice": "8.50"
+            },
+            "DEMO-005": {
+              "name": "示例甜品",
+              "currentPrice": "12.50"
+            }
+          }
+        }
+      },
+      "prices": {
+        "DEMO-001": {
+          "success": true,
+          "code": 200,
+          "data": {
+            "price": 0,
+            "productList": []
+          }
+        },
+        "DEMO-002": {
+          "success": true,
+          "code": 200,
+          "data": {
+            "price": 850,
+            "productList": [
+              {
+                "productCode": "DEMO-002"
+              }
+            ]
+          }
+        }
+      },
+      "calls": [
+        "query-meals",
+        "calculate-price",
+        "calculate-price"
+      ]
+    }
+  ],
+  "nutrition": {
+    "success": true,
+    "code": 200,
+    "data": {
+      "items": [
+        {
+          "name": "示例汉堡",
+          "energyKcal": 420
+        },
+        {
+          "name": "示例可乐",
+          "energyKcal": 160
+        }
+      ]
+    }
+  }
+}

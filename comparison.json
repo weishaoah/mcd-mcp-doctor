@@ -1,0 +1,223 @@
+{
+  "meta": {
+    "mode": "fixture-simulated (NOT REAL STORES OR PRICES)",
+    "scope": "read-only multi-store, same channel and observation window",
+    "sample_count": 2,
+    "num_stores": 3,
+    "recorded_at_utc": "2026-10-12T00:00:00+00:00",
+    "business_channel": {
+      "beType": 1,
+      "orderType": 1
+    },
+    "notes": "Different stores may legitimately have different menus, prices, discounts, or availability."
+  },
+  "intersection_count": 2,
+  "union_count": 5,
+  "pair_overlap": [
+    {
+      "a": "DEMO-STORE-1",
+      "b": "DEMO-STORE-2",
+      "shared_skus": 2,
+      "jaccard": 0.5
+    },
+    {
+      "a": "DEMO-STORE-1",
+      "b": "DEMO-STORE-3",
+      "shared_skus": 2,
+      "jaccard": 0.5
+    },
+    {
+      "a": "DEMO-STORE-2",
+      "b": "DEMO-STORE-3",
+      "shared_skus": 2,
+      "jaccard": 0.5
+    }
+  ],
+  "sampled_skus": [
+    "DEMO-001",
+    "DEMO-002"
+  ],
+  "sku_rows": [
+    {
+      "sku": "DEMO-001",
+      "name": "示例汉堡",
+      "menu_spread_cents": 50,
+      "by_store": [
+        {
+          "store_code": "DEMO-STORE-1",
+          "store_name": "模拟门店 A（非真实门店）",
+          "menu_price_cents": 2550,
+          "quoted_cents": 2550,
+          "status": "PASS",
+          "name": "示例汉堡",
+          "comment": "报价可能包含自动优惠，不能要求与菜单价相等"
+        },
+        {
+          "store_code": "DEMO-STORE-2",
+          "store_name": "模拟门店 B（非真实门店）",
+          "menu_price_cents": 2600,
+          "quoted_cents": 2600,
+          "status": "PASS",
+          "name": "示例汉堡",
+          "comment": "报价可能包含自动优惠，不能要求与菜单价相等"
+        },
+        {
+          "store_code": "DEMO-STORE-3",
+          "store_name": "模拟门店 C（非真实门店）",
+          "menu_price_cents": 2550,
+          "quoted_cents": 0,
+          "status": "WARN",
+          "name": "示例汉堡",
+          "comment": "核价0且 productList 为空，需要检查商品映射、时段和业务响应"
+        }
+      ]
+    },
+    {
+      "sku": "DEMO-002",
+      "name": "示例可乐",
+      "menu_spread_cents": 50,
+      "by_store": [
+        {
+          "store_code": "DEMO-STORE-1",
+          "store_name": "模拟门店 A（非真实门店）",
+          "menu_price_cents": 900,
+          "quoted_cents": 900,
+          "status": "PASS",
+          "name": "示例可乐",
+          "comment": "报价可能包含自动优惠，不能要求与菜单价相等"
+        },
+        {
+          "store_code": "DEMO-STORE-2",
+          "store_name": "模拟门店 B（非真实门店）",
+          "menu_price_cents": 900,
+          "quoted_cents": 900,
+          "status": "PASS",
+          "name": "示例可乐",
+          "comment": "报价可能包含自动优惠，不能要求与菜单价相等"
+        },
+        {
+          "store_code": "DEMO-STORE-3",
+          "store_name": "模拟门店 C（非真实门店）",
+          "menu_price_cents": 850,
+          "quoted_cents": 850,
+          "status": "PASS",
+          "name": "示例可乐",
+          "comment": "报价可能包含自动优惠，不能要求与菜单价相等"
+        }
+      ]
+    }
+  ],
+  "stores": [
+    {
+      "storeCode": "DEMO-STORE-1",
+      "storeName": "模拟门店 A（非真实门店）",
+      "sku_count": 3,
+      "nutrition_exact_match_count": 2,
+      "nutrition_menu_named_count": 3,
+      "diagnostics": [
+        {
+          "id": "MCP-001",
+          "severity": "UNKNOWN",
+          "summary": "未提供 tools/list 数据",
+          "detail": "无法判断工具可发现性。",
+          "source": ""
+        },
+        {
+          "id": "MCD-101",
+          "severity": "PASS",
+          "summary": "菜单结构可解析",
+          "detail": "取得 3 个 SKU。",
+          "source": "query-meals"
+        },
+        {
+          "id": "MCD-102",
+          "severity": "PASS",
+          "summary": "核价金额已返回",
+          "detail": "核价响应 data.price=2550；按官方示例预期为“分”，实际应付可能含优惠，不能强行与菜单标价相等。",
+          "source": "calculate-price"
+        },
+        {
+          "id": "MCD-201",
+          "severity": "INFO",
+          "summary": "营养名称可关联覆盖率（下界）",
+          "detail": "菜单名称精确命中 2/3（66.7%），数据解析格式：list。不代表真实营养覆盖率；套餐拆解后可能提高。",
+          "source": "query-meals + list-nutrition-foods"
+        }
+      ]
+    },
+    {
+      "storeCode": "DEMO-STORE-2",
+      "storeName": "模拟门店 B（非真实门店）",
+      "sku_count": 3,
+      "nutrition_exact_match_count": 2,
+      "nutrition_menu_named_count": 3,
+      "diagnostics": [
+        {
+          "id": "MCP-001",
+          "severity": "UNKNOWN",
+          "summary": "未提供 tools/list 数据",
+          "detail": "无法判断工具可发现性。",
+          "source": ""
+        },
+        {
+          "id": "MCD-101",
+          "severity": "PASS",
+          "summary": "菜单结构可解析",
+          "detail": "取得 3 个 SKU。",
+          "source": "query-meals"
+        },
+        {
+          "id": "MCD-102",
+          "severity": "PASS",
+          "summary": "核价金额已返回",
+          "detail": "核价响应 data.price=2600；按官方示例预期为“分”，实际应付可能含优惠，不能强行与菜单标价相等。",
+          "source": "calculate-price"
+        },
+        {
+          "id": "MCD-201",
+          "severity": "INFO",
+          "summary": "营养名称可关联覆盖率（下界）",
+          "detail": "菜单名称精确命中 2/3（66.7%），数据解析格式：list。不代表真实营养覆盖率；套餐拆解后可能提高。",
+          "source": "query-meals + list-nutrition-foods"
+        }
+      ]
+    },
+    {
+      "storeCode": "DEMO-STORE-3",
+      "storeName": "模拟门店 C（非真实门店）",
+      "sku_count": 3,
+      "nutrition_exact_match_count": 2,
+      "nutrition_menu_named_count": 3,
+      "diagnostics": [
+        {
+          "id": "MCP-001",
+          "severity": "UNKNOWN",
+          "summary": "未提供 tools/list 数据",
+          "detail": "无法判断工具可发现性。",
+          "source": ""
+        },
+        {
+          "id": "MCD-101",
+          "severity": "PASS",
+          "summary": "菜单结构可解析",
+          "detail": "取得 3 个 SKU。",
+          "source": "query-meals"
+        },
+        {
+          "id": "MCD-102",
+          "severity": "WARN",
+          "summary": "可疑零元核价",
+          "detail": "菜单 SKU DEMO-001 展示正价 2550 分，核价返回 0 且商品列表为空。请检查 code → items[].productCode 映射、供餐时段和渠道。",
+          "source": "calculate-price"
+        },
+        {
+          "id": "MCD-201",
+          "severity": "INFO",
+          "summary": "营养名称可关联覆盖率（下界）",
+          "detail": "菜单名称精确命中 2/3（66.7%），数据解析格式：list。不代表真实营养覆盖率；套餐拆解后可能提高。",
+          "source": "query-meals + list-nutrition-foods"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "mode": "fixture-demo (simulated, NOT live)",
+  "tools": [
+    {"name":"query-nearby-stores","inputSchema":{"type":"object"}},
+    {"name":"query-meals","inputSchema":{"type":"object","required":["storeCode","orderType","beType"]}},
+    {"name":"query-meal-detail","inputSchema":{"type":"object","required":["code","orderType","beType"]}},
+    {"name":"list-nutrition-foods","inputSchema":{"type":"object"}},
+    {"name":"calculate-price","inputSchema":{"type":"object","required":["storeCode","orderType","beType","items"]}}
+  ],
+  "product_code": "DUMMY-1001",
+  "menu": {"success":true,"code":200,"data":{"meals":{"DUMMY-1001":{"name":"示例汉堡","currentPrice":"25.50"},"DUMMY-1002":{"name":"示例饮料","currentPrice":"8"},"DUMMY-2001":{"name":"示例套餐","currentPrice":"32"}}}},
+  "nutrition": {"success":true,"code":200,"data":{"items":[{"name":"示例汉堡","energyKcal":500},{"name":"示例饮料","energyKcal":100}]}},
+  "price": {"success":true,"code":200,"data":{"price":0,"productList":[]}},
+  "detail": {"success":true,"code":200,"data":{"rounds":[{"name":"主食","choices":[{"code":"DUMMY-1001","name":"示例汉堡"}]}]}}
+}

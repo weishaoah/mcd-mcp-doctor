@@ -1,0 +1,8 @@
+.env
+*.local.json
+mcp-config.json
+__pycache__/
+*.pyc
+.pytest_cache/
+report.md
+report.json
