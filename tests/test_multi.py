@@ -2,7 +2,8 @@ import json
 import unittest
 from pathlib import Path
 from doctor.multi import (compare,extract_stores,shared_skus,extract_menu,money_price,markdown,
-                          check_store_status,nutrition_match_tiers)
+                          check_store_status,nutrition_match_tiers,
+                          parse_meal_detail,bundle_skus,unmatched_reason_counts)
 
 FIXTURE=Path(__file__).resolve().parents[1]/'fixtures'/'nearby-stores.simulated.json'
 
@@ -109,6 +110,81 @@ class NutritionTierTests(unittest.TestCase):
         foods = {'A', 'BB'}
         exact, partial, missing = nutrition_match_tiers({'A', 'BB', 'C', 'DDD'}, foods)
         self.assertEqual(len(exact) + len(partial) + len(missing), 4)
+
+
+def _detail_payload(name, rounds, success=True):
+    """Shape mirrors the real endpoint: instructions, then Original Response JSON."""
+    import json as _json
+    body = {'success': success, 'code': 200 if success else 400,
+            'message': '请求成功' if success else '参数错误',
+            'data': {'code': 'X1', 'name': name, 'rounds': rounds,
+                     'supportModify': True}}
+    return ('# API Response Information\n\n## Response Structure\n\n'
+            '## Original Response\n\n' + _json.dumps(body, ensure_ascii=False))
+
+
+class ComboCompositionTests(unittest.TestCase):
+    """MCD-303: combo defaults should be shared; choice counts are store-level."""
+
+    def round(self, name, choices, defaults):
+        return {'name': name, 'quantity': 1, 'maxQuantity': 1, 'choices': [
+            {'name': c, 'isDefault': 1 if c in defaults else 0} for c in choices]}
+
+    def test_parses_rounds_and_defaults(self):
+        raw = _detail_payload('测试三件套', [
+            self.round('选择饮料', ['可乐中杯', '雪碧中杯'], ['可乐中杯'])])
+        parsed = parse_meal_detail(raw)
+        self.assertIsNotNone(parsed)
+        self.assertEqual(parsed['name'], '测试三件套')
+        self.assertEqual(parsed['rounds'][0]['defaults'], ['可乐中杯'])
+        self.assertEqual(parsed['rounds'][0]['choice_count'], 2)
+
+    def test_failed_response_is_not_a_finding(self):
+        # Our own wrong argument (productCode) once made this return 400; the tool
+        # must surface "unreadable", never invent a provider fault.
+        self.assertIsNone(parse_meal_detail(_detail_payload('X', [], success=False)))
+        self.assertIsNone(parse_meal_detail(None))
+
+    def test_single_item_has_no_rounds(self):
+        parsed = parse_meal_detail(_detail_payload('巨无霸', []))
+        self.assertEqual(parsed['rounds'], [])
+
+    def test_identical_defaults_across_stores(self):
+        snap = {'mode': 'fixture', 'stores': [], 'sample_count': 0}
+        menus = {}
+        # Same defaults everywhere, differing number of drink options: an expected
+        # stocking-range difference, reported as identical_defaults=True.
+        variants = [['可乐中杯', '雪碧中杯'], ['可乐中杯'], ['可乐中杯', '雪碧中杯', '橙汁']]
+        for i, opts in enumerate(variants):
+            code = str(1000 + i)
+            snap['stores'].append({'storeCode': code, 'storeName': f'店{i}',
+                                   'menu': {'success': True, 'data': {'meals': {'C1': {
+                                       'code': 'C1', 'name': '测试套餐', 'currentPrice': 30.0}}}},
+                                   'details': {'C1': _detail_payload('测试套餐', [
+                                       self.round('选择饮料', opts, ['可乐中杯'])])},
+                                   'prices': {}})
+            menus[code] = extract_menu(snap['stores'][-1]['menu'])
+        rep = compare(snap)
+        row = rep['combo_rows'][0]
+        self.assertTrue(row['is_combo'])
+        self.assertTrue(row['identical_defaults'])
+        self.assertTrue(row['choice_range_differs'])
+        self.assertIn('默认选件跨店完全一致', markdown(rep))
+
+    def test_bundle_skus_prefers_combo_names(self):
+        menus = {'a': {'S1': {'name': '巨无霸', 'menu_price_cents': 2500},
+                       'C1': {'name': '麦香鱼套餐', 'menu_price_cents': 3000},
+                       'C2': {'name': '开心乐园餐', 'menu_price_cents': 2500}},
+                 'b': {'S1': {'name': '巨无霸', 'menu_price_cents': 2500},
+                       'C1': {'name': '麦香鱼套餐', 'menu_price_cents': 3100},
+                       'C2': {'name': '开心乐园餐', 'menu_price_cents': 2500}}}
+        self.assertEqual(bundle_skus(menus, 3), ['C1', 'C2'])
+
+    def test_unmatched_reasons_are_split(self):
+        missing = {'某某套餐', '联名棒球帽', '限定新品堡'}
+        b = unmatched_reason_counts(missing)
+        self.assertEqual((b['bundle'], b['merch'], b['other']), (1, 1, 1))
+        self.assertEqual(b['other_examples'], ['限定新品堡'])
 
 
 if __name__=='__main__':unittest.main()

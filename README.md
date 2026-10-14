@@ -20,7 +20,7 @@ B is the diagnosis.** The report is structured accordingly (§1 diagnosis, §2 o
 the same as parseable data.** All three layers have to be checked separately — and two of the three findings
 below were discovered because the checks were actually run.
 
-## What live verification found (2026-10-13)
+## What live verification found (2026-10-13 ~ 10-14)
 
 Running against real traffic exposed three parsing traps that no offline fixture would have caught. Each one is
 covered by a regression test in `tests/test_core.py::RealResponseRegression`.
@@ -36,6 +36,34 @@ and nutrition name coverage went from `0/115` to `19/115`.
 
 **The first patient of a tool that checks "can this data be parsed correctly" was the tool itself.**
 
+Three more traps surfaced later, during the 2026-10-14 business-hours run. These are worse than crashes:
+the tool *looked* healthy while silently measuring nothing.
+
+| # | Trap | Symptom | Fix |
+|---|---|---|---|
+| 4 | Wrong argument name for a tool | `query-meal-detail` wants `code`, we sent `productCode` → HTTP-level 400, and every combo appeared to have no composition | Send `code` + `orderType` + `beType`, matching the official schema |
+| 5 | Tool missing from the read-only allowlist | `now-time-info` rejected by own guard → official clock unavailable → `MCD-304b` permanently degraded to `UNKNOWN` | Added to `READ_ONLY_TOOLS`, plus the failure reason is now recorded instead of swallowed |
+| 6 | Failed response read as a valid one | A `success:false` body was parsed as "single item, zero rounds" — indistinguishable from a clean result | `parse_meal_detail` returns nothing when `business_ok` is False |
+
+All six are covered by regression tests.
+
+### Business-hours multi-store run (2026-10-14 11:26, official clock)
+
+Three stores in one Shanghai district, same channel and window, no coupons:
+
+| Check | Result | Class |
+|---|---|---|
+| Same-store quote vs menu price (15 pairs) | 15/15 PASS — no unexplained zero quote with an empty product list | B, diagnostic |
+| `MCD-304a` stated open vs actual menu | 3/3 PASS (open, 115 / 118 / 109 SKUs) | B, diagnostic |
+| `MCD-304b` business hours vs status flag | 3/3 PASS, verified against `now-time-info` | B, diagnostic |
+| Combo default composition (3 combos × 3 stores) | Identical everywhere — one shared combo definition | INFO |
+| Combo choice counts | Differ per store (e.g. 31 / 29 / 20 drinks) — stocking range | INFO |
+| Cross-store price gaps (99 common SKUs) | 79 identical, 20 differ, max ¥1.00 | INFO |
+
+**Nothing was found wrong — and that is still a result.** It says the within-store data chain held
+for these stores, this window and these SKUs. It does not say the provider has no bugs: PASS only means
+this sample did not trigger the criterion. Full write-up in `EXPERIMENT.md` §5.1.
+
 ## Start: offline, no token and no dependency
 
 Requires Python 3.10+.
@@ -47,7 +75,7 @@ python -m unittest discover -s tests -v
 
 Open `report.md` and `report.json` for the test findings. The fixture uses **fictional products, fictional codes and a deliberately abnormal price of 0**, to illustrate WARN vs PASS/FAIL/UNKNOWN. It is *not* a captured official response.
 
-## Live check — verified 2026-10-13, zero external dependencies
+## Live check — verified 2026-10-13 and 2026-10-14, zero external dependencies
 
 Live mode talks to the MCP endpoint directly over streamable HTTP via `doctor/transport.py`.
 **No external CLI, no third-party packages** — Python 3.10+ standard library only.
@@ -161,8 +189,10 @@ The report also prints the theoretical floor (every item bought at its own cheap
 lower than buying everything in one place — and almost never worth the extra trips. Caveats are stated in the
 report itself: no coupons, no delivery fees, no distance cost. **Cheaper is not the same as better value.**
 
-Use a **mainland-China city or store codes** (the official MCP is mainland-focused). `--city` discovery picks the first records returned; this is not guaranteed to be geographical-nearest ordering. All live requests are limited to read-only `query-nearby-stores`, `query-meals`, `list-nutrition-foods`, `calculate-price` and `tools/list`. The code does **not** create orders, redeem points, claim coupons or read private account data.
+Use a **mainland-China city or store codes** (the official MCP is mainland-focused). `--city` discovery picks the first records returned; this is not guaranteed to be geographical-nearest ordering. All live requests are limited to read-only `query-nearby-stores`, `query-meals`, `query-meal-detail`,
+`list-nutrition-foods`, `calculate-price`, `now-time-info` and `tools/list`.
+Every call goes through an allowlist guard: anything else raises before leaving the process. The code does **not** create orders, redeem points, claim coupons or read private account data.
 
-Sampling: one menu call per store, one nutrition call per batch, and at most five quote calls per store (19 calls with three stores plus discovery and tool listing). For a short comparison, keep orderType=1 and beType=1, and finish within the same meal period. If the common positive-price SKU set is empty, the report displays an explicit unknown rather than inventing a match. Reports store only selected item names, codes and findings, not raw personal account responses.
+Sampling: one menu call per store, one nutrition call per batch (`list-nutrition-foods` is a shared global source, fetched once), quotes for five common SKUs plus three combos, and combo composition for the same set — about 17 calls per store, plus discovery and tool listing. For a short comparison, keep orderType=1 and beType=1, and finish within the same meal period. If the common positive-price SKU set is empty, the report displays an explicit unknown rather than inventing a match. Reports store only selected item names, codes and findings, not raw personal account responses.
 
 Read [VALIDATION_PLAN.md](VALIDATION_PLAN.md) for the full causal controls, rejection criteria, and interpretation.

@@ -8,7 +8,8 @@ import json
 import sys
 from pathlib import Path
 from .core import diagnose,markdown,READ_ONLY_TOOLS,unwrap,money_cents
-from .multi import extract_stores,extract_menu,shared_skus,compare,markdown as multi_markdown,explanations as multi_explanations
+from .multi import (extract_stores,extract_menu,shared_skus,compare,markdown as multi_markdown,
+                    explanations as multi_explanations,bundle_skus)
 from .basket import build_basket_table,markdown as basket_markdown
 from datetime import datetime, timezone
 
@@ -76,10 +77,16 @@ def live_multi(stores,requested_skus=None,sample_count=5):
     data={'mode':'live-unverified','recorded_at_utc':datetime.now(timezone.utc).isoformat(),
           'business_channel':{'beType':1,'orderType':1},'tools':get_tool_definitions(),'stores':[],'sample_count':sample_count}
     # Official clock as the experiment's time base: never trust the local machine.
+    # Recorded why it failed if it did — a swallowed error would silently degrade
+    # MCD-304b from a real check to UNKNOWN without saying so.
     try:
         data['official_time']=unwrap(invoke('now-time-info',{})).get('data')
-    except Exception:
-        data['official_time']=None
+    except Exception as exc:
+        try:  # one retry: this endpoint takes no arguments and fails transiently
+            data['official_time']=unwrap(invoke('now-time-info',{})).get('data')
+        except Exception as exc2:
+            data['official_time']=None
+            data['official_time_error']=f'{type(exc).__name__}: {exc} | retry: {type(exc2).__name__}: {exc2}'
     for store in stores:
         code=str(store['storeCode'])
         menu=invoke('query-meals',{'storeCode':code,'orderType':1,'beType':1})
@@ -95,20 +102,29 @@ def live_multi(stores,requested_skus=None,sample_count=5):
     menus={str(s['storeCode']):extract_menu(s['menu']) for s in data['stores']}
     selected=shared_skus(menus,requested_skus,sample_count)
     data['requested_skus']=selected
+    # Single items have no composition rounds, so open a few combos too — otherwise
+    # the combo check silently measures nothing.
+    data['bundle_skus']=bundle_skus(menus,3)
+    detail_codes=list(dict.fromkeys(selected+data['bundle_skus']))
     for s in data['stores']:
-        for code in selected:
+        for code in detail_codes:
             s['prices'][code]=invoke('calculate-price',{
                 'storeCode':s['storeCode'],'orderType':1,'beType':1,
                 'items':[{'productCode':code,'quantity':1}]})
             s['calls'].append('calculate-price')
         # Combo composition (MCD-103): same code, does every store return the
         # same structure? Read-only, and never interpreted as a fault on its own.
-        for code in selected:
+        for code in detail_codes:
+            # The official argument is `code`, not `productCode`; without beType
+            # the API answers 400. Both mistakes once made this check silently
+            # dead while looking alive.
             try:
-                s['details'][code]=invoke('query-meal-detail',{'storeCode':s['storeCode'],'productCode':code})
+                s['details'][code]=invoke('query-meal-detail',{
+                    'storeCode':s['storeCode'],'orderType':1,'beType':1,'code':code})
                 s['calls'].append('query-meal-detail')
-            except Exception:
+            except Exception as exc:
                 s['details'][code]=None
+                s.setdefault('detail_errors',{})[code]=f'{type(exc).__name__}: {exc}'
     return data
 
 

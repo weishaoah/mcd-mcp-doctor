@@ -141,13 +141,13 @@ def markdown(basket: dict) -> str:
 
     summary = basket['summary']
     if summary:
-        out += ['### 3.3 跨店价格总览（观察）', '',
+        out += ['### 3.2 跨店价格总览（观察）', '',
                 f"- 三店共同且都有正价的商品：{summary.get('common_priced', 0)} 个",
                 f"- 价格完全一致：{summary.get('identical', 0)} 个",
                 f"- 存在价差：{summary.get('differing', 0)} 个"
                 f"（最大价差 {_fmt(summary.get('max_spread_cents', 0))} 元）", '']
 
-    out += ['### 3.2 购物篮部分的解释', '',
+    out += ['### 3.3 购物篮部分的解释', '',
             '- 以上价格均来自 `query-meals` 的菜单展示价，同一采样窗口、同一渠道。',
             '- 门店定价不同属于正常商业行为，**不作为 MCP 故障**。',
             '- 未计入优惠券、配送费与距离成本；更便宜不等于更划算。',

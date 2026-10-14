@@ -65,6 +65,23 @@ def extract_stores(raw):
     return stores
 
 
+BUNDLE_NAME_RE = re.compile(r'套餐|件套|双人餐|随心配|乐园餐|随心选|分享餐|双全盒|小食盘|单品精选')
+MERCH_NAME_RE = re.compile(r'帽$|玩具|周边|抱枕|捶|挠|饼干|棒球帽')
+
+
+def unmatched_reason_counts(missing):
+    """Why a menu name cannot be linked to the nutrition table.
+
+    Splits: bundle/combo names, merchandise, and everything else. This explains
+    the *coverage* mismatch; it never asserts anything about the data being wrong.
+    """
+    bundle = [n for n in missing if BUNDLE_NAME_RE.search(n)]
+    merch = [n for n in missing if MERCH_NAME_RE.search(n)]
+    other = sorted(set(missing) - set(bundle) - set(merch))
+    return {'bundle': len(bundle), 'merch': len(merch), 'other': len(other),
+            'other_examples': other[:8]}
+
+
 def shared_skus(menus, requested=None, sample_count=5):
     if not menus: return []
     common = set.intersection(*(set(m) for m in menus.values()))
@@ -73,6 +90,58 @@ def shared_skus(menus, requested=None, sample_count=5):
     if requested:
         return [str(c) for c in requested if str(c) in common][:sample_count]
     return sorted(common)[:sample_count]
+
+
+def parse_meal_detail(raw):
+    """Extract combo composition from a query-meal-detail payload.
+
+    Returns None when nothing usable can be read, which is a fact about our own
+    parsing or about the response — never a claim of a provider fault.
+    """
+    if raw is None:
+        return None
+    d = unwrap(raw)
+    # A failed call must not be read as "a single item with no rounds" — that is
+    # exactly how a wrong argument once looked like a perfectly clean result.
+    if business_ok(raw) is False:
+        return None
+    data = d.get('data') if isinstance(d.get('data'), dict) else {}
+    if not data or not isinstance(data, dict):
+        return None
+    rounds = []
+    for r in (data.get('rounds') or []):
+        if not isinstance(r, dict):
+            continue
+        choices = [c for c in (r.get('choices') or []) if isinstance(c, dict)]
+        rounds.append({'name': str(r.get('name') or ''),
+                       'quantity': r.get('quantity'),
+                       'max_quantity': r.get('maxQuantity'),
+                       'choice_count': len(choices),
+                       'defaults': [str(c.get('name') or '') for c in choices
+                                    if c.get('isDefault') == 1]})
+    return {'code': str(data.get('code') or ''),
+            'name': str(data.get('name') or ''),
+            'support_modify': data.get('supportModify'),
+            'rounds': rounds}
+
+
+def bundle_skus(menus, limit=3):
+    """Common SKUs whose menu name looks like a combo/bundle.
+
+    Used only to choose what to open with query-meal-detail: single items have no
+    composition rounds by definition, so they carry no signal there. Name matching
+    is a heuristic for *sampling*, not a classification that gets reported.
+    """
+    if not menus:
+        return []
+    common = set.intersection(*(set(m) for m in menus.values()))
+    hits = []
+    for code in sorted(common):
+        name = next((menus[s][code]['name'] for s in menus
+                     if menus[s].get(code, {}).get('name')), '')
+        if name and BUNDLE_NAME_RE.search(name):
+            hits.append(code)
+    return hits[:limit]
 
 
 def money_price(raw):
@@ -278,8 +347,42 @@ def compare(snapshot):
             if official_hhmm is not None:
                 break
 
-    reports=[]
-    for sid,store in metas.items():
+    combo_codes = sorted({c for s in stores for c in (s.get('details') or {})})
+    combo_rows = []
+    for code in combo_codes:
+        per = []
+        for sid, store in metas.items():
+            parsed = parse_meal_detail((store.get('details') or {}).get(code))
+            if parsed is None:
+                per.append({'store_code': sid, 'store_name': store.get('storeName', sid),
+                            'ok': False, 'round_count': None, 'defaults': [],
+                            'choice_counts': [], 'name': ''})
+            else:
+                per.append({'store_code': sid, 'store_name': store.get('storeName', sid),
+                            'ok': True, 'name': parsed['name'],
+                            'round_count': len(parsed['rounds']),
+                            'defaults': [x for r in parsed['rounds'] for x in r['defaults']],
+                            'choice_counts': [r['choice_count'] for r in parsed['rounds']]})
+        ok_rows = [p for p in per if p['ok']]
+        name = next((p['name'] for p in ok_rows if p.get('name')), '')
+        if not name:
+            for sid2 in metas:
+                item = menus[sid2].get(code)
+                if item and item.get('name'):
+                    name = item['name']
+                    break
+        combo_rows.append({
+            'sku': code, 'name': name, 'by_store': per,
+            # Same defaults everywhere => one shared combo definition. Reported as
+            # INFO either way: differing counts reflect stocking range, not an error.
+            'identical_defaults': len({tuple(p['defaults']) for p in ok_rows}) == 1 if ok_rows else None,
+            'choice_range_differs': len({tuple(p['choice_counts']) for p in ok_rows}) > 1 if ok_rows else None,
+            'is_combo': bool(ok_rows and any(p['round_count'] for p in ok_rows)),
+            'all_resolved': len(ok_rows) == len(per) and bool(ok_rows),
+        })
+
+    reports = []
+    for sid, store in metas.items():
         prices=store.get('prices') or {}
         # Existing single-store checks use first priced common SKU; additional quotes are in comparison.
         first=selected[0] if selected else None
@@ -292,6 +395,7 @@ def compare(snapshot):
                              'price':prices.get(first) if first else None})
         menu_names={x['name'] for x in menus[sid].values() if x['name']}
         exact,partial,missing=nutrition_match_tiers(menu_names,names)
+        missing_breakdown = unmatched_reason_counts(missing)
         reports.append({'storeCode':sid,'storeName':store.get('storeName',sid),
                         'sku_count':len(menus[sid]),
                         'businessStartTime':store.get('businessStartTime'),
@@ -303,6 +407,7 @@ def compare(snapshot):
                         'nutrition_tiers':{'exact':len(exact),'partial':len(partial),'missing':len(missing),
                                            'partial_examples':sorted(partial)[:5],
                                            'missing_examples':sorted(missing)[:5]},
+                        'nutrition_missing_breakdown':missing_breakdown,
                         'status_checks':check_store_status(store,len(menus[sid]),official_hhmm),
                         'diagnostics':diagnostic['findings']})
     return {'meta':{'mode':snapshot.get('mode','fixture'),
@@ -310,9 +415,11 @@ def compare(snapshot):
                     'sample_count':len(selected),'num_stores':len(metas),
                     'recorded_at_utc':snapshot.get('recorded_at_utc'),
                     'business_channel':snapshot.get('business_channel',{'beType':1,'orderType':1}),
+                    'official_time_error':snapshot.get('official_time_error'),
                     'notes':'Different stores may legitimately have different menus, prices, discounts, or availability.'},
             'intersection_count':len(intersection),'union_count':len(union),
             'coverage':{'exclusive_count':len(exclusive),'exclusive':exclusive},
+            'combo_rows':combo_rows,
             'official_time':official_time,
             'pair_overlap':pairs,'sampled_skus':selected,'sku_rows':rows,'stores':reports,
             'menu_price_table':price_table,'price_spread':spread,
@@ -325,6 +432,10 @@ def markdown(report):
     meta=report['meta']
     official=report.get('official_time') or {}
     official_str=official.get('formatted') or official.get('datetime') or '未取得（now-time-info）'
+    if not official:
+        err=report['meta'].get('official_time_error')
+        if err:
+            official_str=f'未取得（now-time-info）：`{err}`'
     out=['# McD MCP Doctor｜多门店业务数据一致性诊断','',
          '> 诊断对象是**同一家门店内部**各接口是否彼此对得上。',
          '> 门店与门店之间的差异属正常商业行为，记为观察，不判故障。',
@@ -401,7 +512,33 @@ def markdown(report):
         if cov.get('exclusive_count',0)>len(ex):
             out.append(f"| … | 另有 {cov['exclusive_count']-len(ex)} 个未列出 |")
 
-    out+=['','### 2.2 营养关联（可关联性，非营养真实性）','',
+    out+=['','### 2.3 套餐组成：默认选件与可选范围（`query-meal-detail`）','',
+          '> 默认选件**一致**说明套餐定义是统一的；可选项**个数**不同反映门店备货范围。',
+          '> 两者都不作为故障：前者属正常设计，后者属门店级供应差异。','']
+    combos=[c for c in (report.get('combo_rows') or []) if c.get('is_combo')]
+    if combos:
+        out+=['| SKU | 商品 | 门店 | 选配轮次 | 默认选件 | 每轮可选项数 |','|---|---|---|---:|---:|---:|']
+        for c in combos:
+            for p in c['by_store']:
+                rounds='—' if not p['ok'] else str(p['round_count'])
+                defaults='、'.join(p['defaults']) if p['ok'] and p['defaults'] else '—'
+                counts='、'.join(str(x) for x in p['choice_counts']) if p['ok'] else '—'
+                out.append(f"| {c['sku']} | {c['name']} | {p['store_name']} | {rounds} "
+                           f"| {defaults} | {counts} |")
+        consistent=[c for c in combos if c.get('identical_defaults')]
+        divergent=[c for c in combos if c.get('choice_range_differs')]
+        unresolved=[c for c in combos if not c.get('all_resolved')]
+        out+=['']
+        out.append(f"- 默认选件跨店完全一致：{len(consistent)}/{len(combos)} 个套餐。")
+        out.append(f"- 可选项个数跨店不同：{len(divergent)}/{len(combos)} 个套餐"
+                   f"（门店备货范围不同，属正常）。" if divergent else
+                   '- 可选项个数跨店相同：全部一致。')
+        if unresolved:
+            out.append(f"- ⚠ {len(unresolved)} 个套餐未能全部解析：可能是入参、响应格式或该店不售该套餐，**不作为服务端故障**。")
+    else:
+        out.append('- 本次采样窗口未取到套餐类商品的详情（可能所选门店当前无可比对套餐，或采集未包含该项）。')
+
+    out+=['','### 2.4 营养关联（可关联性，非营养真实性）','',
           '| 门店 | 精确匹配 | 部分匹配 | 无法匹配 | 菜单命名商品 |','|---|---:|---:|---:|---:|']
     for s in report['stores']:
         t=s.get('nutrition_tiers') or {}
@@ -414,8 +551,13 @@ def markdown(report):
         if t.get('missing_examples'):
             out.append(f"- 无法匹配示例（{s['storeName']}）：{'、'.join(t['missing_examples'])}")
     out.append('')
-    out.append('> 「无法匹配」不等于数据错误：营养表覆盖范围有限，且只取一次（全局）。')
-    out.append('> 匹配率随采样时段变化，跨次比较需注明时间。')
+    out.append('> 「无法匹配」不等于数据错误。把无法匹配的名字拆开看：')
+    for s in report['stores']:
+        b=s.get('nutrition_missing_breakdown') or {}
+        out.append(f"> - {s['storeName']}：套餐/组合类 {b.get('bundle',0)} 个、"
+                   f"周边物料 {b.get('merch',0)} 个、其余单品 {b.get('other',0)} 个。")
+    out.append('> 营养表是全局一次调用、条目有限，且主要收录常驻单品；')
+    out.append('> 关联不上主要体现**覆盖范围差异**，不是名称拼接错误。')
 
     return '\n'.join(out)
 

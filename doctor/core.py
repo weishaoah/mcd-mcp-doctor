@@ -7,6 +7,8 @@ from typing import Any
 READ_ONLY_TOOLS = frozenset({
     'query-nearby-stores','query-meals','query-meal-detail',
     'list-nutrition-foods','calculate-price',
+    # Used as the experiment's clock so local machine time is never trusted.
+    'now-time-info',
 })
 
 # Tool input contracts from official MCD README (2026-10-12).
