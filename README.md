@@ -100,6 +100,36 @@ python -m doctor --live --store YOUR_STORE_CODE --detail-code YOUR_MENU_CODE --o
 
 **Check the code and run it locally with your own Token before claiming production compatibility.**
 
+## Agent business-correctness harness (added 2026-10-14)
+
+The doctor was originally a check on the *interface*. It is now also a check on the
+**agent using the interface**: does it produce the right answer under normal and
+abnormal data, and does it ever perform an unauthorized write?
+
+```bash
+python -m harness.runner          # writes experiment-report.md + experiment-results.json
+python -m unittest discover -s tests -q
+```
+
+Ten reproducible cases (`fixtures/agent/scenarios.json`), each with an independently
+written truth. Two of them are normal on purpose, to catch over-alarming.
+
+| | What it checks |
+|---|---|
+| C01/C02 | normal quoting and cross-store price gaps — **must not** be flagged |
+| C03 | `code` → `productCode` mapping returns a silent `price: 0` |
+| C04 | menu is in **yuan** (string), quote is in **cents** (int) |
+| C05/C06 | missing item / missing nutrition must say unknown, never invent |
+| C07 | combo defaults are not the full selectable pool |
+| C08 | price changed between query and quote — use the final quote |
+| C09 | transport OK but business failed — stop reasoning |
+| C10 | query-only request must not call any write tool |
+
+**Read `experiment-report.md` §3 before quoting any number from it.** The baseline scores
+0/8 because the DemoAgent's shortcuts were written to be triggered by these cases; that
+is a framework smoke test, not a real error rate. The agent under test is a deterministic
+`DemoAgent`, **not a model** — none of this generalises to real LLM agents.
+
 ## Why this is different
 
 Generic MCP Inspectors and `mcd-cli` validate connectivity and tool parameters. This project adds: business success vs transport success, meal-code-to-price-code verification, positive-price/zero-price anomaly alerts, price-unit awareness, and nutritional name coverage as *an observation only*. A PASS does not prove accuracy, a WARN is not a server bug, and UNKNOWN never silently passes.
